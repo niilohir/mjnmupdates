@@ -1,6 +1,7 @@
 // MJNM UPDATES API — runs on Cloudflare Pages Functions.
-//   GET  /api/posts  -> { posts, team }: latest posts, newest first, plus the
-//                       list of names and colors (public)
+//   GET  /api/posts  -> { posts, team, reactions }: latest posts (with their
+//                       reactions), newest first, plus the list of names and
+//                       colors and the available reaction emoji (public)
 //   POST /api/posts  -> multipart form { name, text, image? } creates a post
 //                       (team only; name must be one of TEAM in lib/team.js)
 //   DELETE /api/posts?id=123 -> deletes a post and its photo (team only)
@@ -9,6 +10,7 @@
 // by functions/api/images/[id].js.
 import { json, setup, isTeam, wrongPassword } from "../../lib/api.js";
 import { TEAM, isTeamMember } from "../../lib/team.js";
+import { REACTIONS } from "../../lib/reactions.js";
 
 const MAX_TEXT = 280;
 const FEED_LIMIT = 200;
@@ -21,23 +23,42 @@ export async function onRequestGet({ env }) {
   const notReady = await setup(env);
   if (notReady) return notReady;
 
-  const { results } = await env.DB.prepare(
-    `SELECT p.id, p.name, p.text, p.created_at, i.id AS image_id, i.width, i.height
-       FROM posts p LEFT JOIN images i ON i.id = p.image_id
-      ORDER BY p.created_at DESC, p.id DESC
-      LIMIT ?`
-  )
-    .bind(FEED_LIMIT)
-    .all();
+  const [{ results }, { results: reactionRows }] = await env.DB.batch([
+    env.DB.prepare(
+      `SELECT p.id, p.name, p.text, p.created_at, i.id AS image_id, i.width, i.height
+         FROM posts p LEFT JOIN images i ON i.id = p.image_id
+        ORDER BY p.created_at DESC, p.id DESC
+        LIMIT ?`
+    ).bind(FEED_LIMIT),
+    env.DB.prepare(
+      `SELECT post_id, emoji, name FROM reactions
+        WHERE post_id IN (SELECT id FROM posts ORDER BY created_at DESC, id DESC LIMIT ?)
+        ORDER BY created_at, name`
+    ).bind(FEED_LIMIT),
+  ]);
 
-  const posts = results.map((r) => ({
-    id: r.id,
-    name: r.name,
-    text: r.text,
-    created_at: r.created_at,
-    image: r.image_id ? { url: `/api/images/${r.image_id}`, width: r.width, height: r.height } : null,
-  }));
-  return json({ posts, team: TEAM });
+  // post id -> emoji -> names, in the order people reacted
+  const byPost = new Map();
+  for (const r of reactionRows) {
+    if (!byPost.has(r.post_id)) byPost.set(r.post_id, new Map());
+    const byEmoji = byPost.get(r.post_id);
+    if (!byEmoji.has(r.emoji)) byEmoji.set(r.emoji, []);
+    byEmoji.get(r.emoji).push(r.name);
+  }
+
+  const posts = results.map((r) => {
+    const byEmoji = byPost.get(r.id) ?? new Map();
+    return {
+      id: r.id,
+      name: r.name,
+      text: r.text,
+      created_at: r.created_at,
+      image: r.image_id ? { url: `/api/images/${r.image_id}`, width: r.width, height: r.height } : null,
+      // Listed in REACTIONS order so the page shows them consistently.
+      reactions: REACTIONS.filter((e) => byEmoji.has(e)).map((e) => ({ emoji: e, names: byEmoji.get(e) })),
+    };
+  });
+  return json({ posts, team: TEAM, reactions: REACTIONS });
 }
 
 // Recognises JPEG, PNG and WebP by their first bytes, so a renamed file of
@@ -103,7 +124,7 @@ export async function onRequestPost({ request, env }) {
       .run());
   }
 
-  return json({ post: { id: meta.last_row_id, name, text, created_at, image } }, 201);
+  return json({ post: { id: meta.last_row_id, name, text, created_at, image, reactions: [] } }, 201);
 }
 
 export async function onRequestDelete({ request, env }) {
@@ -114,8 +135,9 @@ export async function onRequestDelete({ request, env }) {
   const id = Number(new URL(request.url).searchParams.get("id"));
   if (!Number.isInteger(id) || id <= 0) return json({ error: "Invalid post id." }, 400);
 
-  const [, deletedPost] = await env.DB.batch([
+  const [, , deletedPost] = await env.DB.batch([
     env.DB.prepare("DELETE FROM images WHERE id = (SELECT image_id FROM posts WHERE id = ?)").bind(id),
+    env.DB.prepare("DELETE FROM reactions WHERE post_id = ?").bind(id),
     env.DB.prepare("DELETE FROM posts WHERE id = ?").bind(id),
   ]);
   if (!deletedPost.meta.changes) return json({ error: "That post was already deleted." }, 404);

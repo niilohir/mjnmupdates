@@ -163,6 +163,37 @@
   .post-text { margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .post-text a { color: var(--accent); text-decoration: none; }
   .post-text a:hover { text-decoration: underline; }
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 8px; }
+  .react {
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+    height: 28px; min-width: 28px; padding: 0 10px; border-radius: 999px;
+    border: 1px solid var(--border); background: none; cursor: pointer;
+    color: var(--muted); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  .react .e { font-size: 15px; line-height: 1; }
+  .react:hover:not(:disabled) { border-color: var(--accent); }
+  .react:disabled { cursor: default; }
+  .react.mine {
+    color: var(--accent); border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+  }
+  .react.like:hover:not(:disabled) { border-color: var(--danger); }
+  .react.like.mine {
+    color: var(--danger); border-color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 12%, transparent);
+  }
+  .react.add { padding: 0 8px; }
+  .tray {
+    display: inline-flex; gap: 2px; padding: 2px;
+    border: 1px solid var(--border); border-radius: 999px; background: var(--bg);
+    animation: fadein .15s ease-out;
+  }
+  .tray button {
+    width: 34px; height: 28px; border: 0; border-radius: 999px;
+    background: none; cursor: pointer; font-size: 17px; line-height: 1;
+  }
+  .tray button:hover { background: var(--surface); }
+  .tray button.mine { background: color-mix(in srgb, var(--accent) 18%, transparent); }
   .img-btn {
     display: block; margin-top: 8px; padding: 0; border: 0; background: none;
     max-width: 100%; cursor: zoom-in; border-radius: 14px;
@@ -248,6 +279,8 @@
   let renderedDay = null;
   let photo = null;      // { blob, width, height, url } ready to upload
   let photoBusy = false; // true while a picked photo is being shrunk
+  let reactionSet = [];  // available emoji, from the server; the first is the "like"
+  let pickerFor = null;  // post whose reaction picker is open
 
   // ---------- helpers ----------
   // The team list (names + colors) comes from the server, see lib/team.js.
@@ -435,6 +468,9 @@
         body.append(open);
       }
 
+      const actions = renderReactions(p);
+      if (actions) body.append(actions);
+
       row.append(av, body);
       feed.append(row);
     }
@@ -476,6 +512,7 @@
   async function refresh() {
     try {
       const data = await api("GET", "/api/posts");
+      if (data.reactions) reactionSet = data.reactions;
       if (data.team && JSON.stringify(data.team) !== JSON.stringify(team)) {
         team = data.team;
         if (me && !team.some((m) => m.name === me)) me = null;
@@ -521,7 +558,9 @@
       chip.addEventListener("click", () => {
         me = m.name;
         store.set("mjnm-name", me);
+        $("postError").textContent = "";
         renderWho();
+        if (seenIds) renderFeed(lastPosts); // highlight this person's reactions
         textInput.focus();
       });
       who.append(chip);
@@ -636,7 +675,115 @@
   }
   $("lightbox").addEventListener("click", closeLightbox);
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !$("lightbox").classList.contains("hidden")) closeLightbox();
+    if (e.key !== "Escape") return;
+    if (!$("lightbox").classList.contains("hidden")) closeLightbox();
+    else if (pickerFor !== null) { pickerFor = null; renderFeed(lastPosts); }
+  });
+
+  // ---------- likes & reactions ----------
+  // Guests see the counts; logged-in members can add and remove their own.
+  function renderReactions(p) {
+    const canReact = Boolean(password);
+    const rx = p.reactions || [];
+    if (!canReact && !rx.length) return null;
+    const like = reactionSet[0];
+
+    const row = document.createElement("div");
+    row.className = "actions";
+
+    for (const emoji of reactionSet) {
+      const r = rx.find((x) => x.emoji === emoji);
+      const isLike = emoji === like;
+      // The like button is always there for members; other emoji only once someone used them.
+      if (!r && !(isLike && canReact)) continue;
+      const mine = Boolean(r && me && r.names.includes(me));
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "react" + (isLike ? " like" : "") + (mine ? " mine" : "");
+      btn.disabled = !canReact;
+      const icon = document.createElement("span");
+      icon.className = "e";
+      icon.textContent = isLike && !r ? "🤍" : emoji;
+      btn.append(icon);
+      if (r) btn.append(String(r.names.length));
+      const who = r ? r.names.join(", ") : "";
+      btn.title = r ? who : "Like";
+      btn.setAttribute("aria-label", r ? `${emoji} ${r.names.length}: ${who}` : "Like");
+      btn.setAttribute("aria-pressed", String(mine));
+      btn.addEventListener("click", () => setReaction(p.id, emoji, !mine));
+      row.append(btn);
+    }
+
+    if (canReact) {
+      const add = document.createElement("button");
+      add.type = "button";
+      add.className = "react add";
+      add.title = "React";
+      add.setAttribute("aria-label", "Add a reaction");
+      add.setAttribute("aria-expanded", String(pickerFor === p.id));
+      add.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="13" r="8"/><path d="M8 15c.8 1 1.8 1.5 3 1.5s2.2-.5 3-1.5"/><path d="M8.5 10.5h.01M13.5 10.5h.01"/><path d="M20 2v6M17 5h6"/></svg>';
+      add.addEventListener("click", (e) => {
+        e.stopPropagation();
+        pickerFor = pickerFor === p.id ? null : p.id;
+        renderFeed(lastPosts);
+      });
+      row.append(add);
+
+      if (pickerFor === p.id) {
+        const tray = document.createElement("div");
+        tray.className = "tray";
+        tray.setAttribute("role", "group");
+        tray.setAttribute("aria-label", "Pick a reaction");
+        for (const emoji of reactionSet.slice(1)) {
+          const r = rx.find((x) => x.emoji === emoji);
+          const mine = Boolean(r && me && r.names.includes(me));
+          const b = document.createElement("button");
+          b.type = "button";
+          b.textContent = emoji;
+          if (mine) b.className = "mine";
+          b.setAttribute("aria-label", `${mine ? "Remove" : "React with"} ${emoji}`);
+          b.addEventListener("click", (e) => { e.stopPropagation(); setReaction(p.id, emoji, !mine); });
+          tray.append(b);
+        }
+        row.append(tray);
+      }
+    }
+    return row;
+  }
+
+  // Updates the screen straight away, then tells the server; the next refresh
+  // corrects things if the server disagreed.
+  async function setReaction(postId, emoji, on) {
+    if (!password) return;
+    if (!me) {
+      $("postError").textContent = "Pick who you are first.";
+      $("composer").scrollIntoView({ behavior: "smooth", block: "start" });
+      $("who").querySelector(".chip")?.focus({ preventScroll: true });
+      return;
+    }
+    pickerFor = null;
+    renderFeed(lastPosts.map((p) => (p.id === postId ? { ...p, reactions: withReaction(p.reactions || [], emoji, on) } : p)));
+    try {
+      await api("POST", "/api/reactions", { pw: password, body: { post_id: postId, name: me, emoji, on } });
+    } catch (err) {
+      if (err.status === 401) { logout(); openLogin("The team password has changed. Log in again."); }
+      else alertInline(err.message);
+    }
+    refresh();
+  }
+
+  function withReaction(list, emoji, on) {
+    const byEmoji = new Map(list.map((r) => [r.emoji, r.names.filter((n) => n !== me || r.emoji !== emoji)]));
+    if (on) byEmoji.set(emoji, [...(byEmoji.get(emoji) || []), me]);
+    return reactionSet
+      .filter((e) => byEmoji.get(e)?.length)
+      .map((e) => ({ emoji: e, names: byEmoji.get(e) }));
+  }
+
+  // Clicking anywhere else closes an open reaction picker.
+  document.addEventListener("click", (e) => {
+    if (pickerFor !== null && !e.target.closest(".tray")) { pickerFor = null; renderFeed(lastPosts); }
   });
 
   $("composer").addEventListener("submit", async (e) => {
