@@ -1,6 +1,6 @@
 # MJNM UPDATES 🌙
 
-A tiny update feed for the team. Anyone with the link can read it. Team members click **Team login**, enter the team password, pick who they are (Anders, Arttu, Emppu, Niilo or Ingman, each with their own color) and post short updates (max 280 characters, optionally with one photo), which show up for everyone with a timestamp. Logged-in members can like posts and react with emoji (❤️ 👍 😂 🔥 🚀 😮); guests see the counts. No comments. Anyone logged in can delete any post (click **Delete**, then **Delete?** to confirm).
+A tiny update feed for the team. Anyone with the link can read it. Team members click **Team login**, enter the team password, pick who they are (Anders, Arttu, Emppu, Niilo or Ingman, each with their own color) and post short updates (max 280 characters, optionally with one photo), which show up for everyone with a timestamp. Logged-in members can like posts (heart button) and react with emoji (👍 😂 🔥 🚀 😮 😢 😠); guests see the counts. No comments. Anyone logged in can delete any post (click **Delete**, then **Delete?** to confirm).
 
 Hosted for free on **Cloudflare Pages**, posts stored in **Cloudflare D1**.
 
