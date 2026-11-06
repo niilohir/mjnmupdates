@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MJNM UPDATES</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌙</text></svg>">
+<style>
+  :root {
+    --bg: #ffffff;
+    --surface: #f7f9f9;
+    --text: #0f1419;
+    --muted: #536471;
+    --border: #eff3f4;
+    --accent: #6d5dfc;
+    --accent-hover: #5a49f0;
+    --danger: #e0245e;
+    --focus: rgba(109, 93, 252, .25);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --surface: #16181c;
+      --text: #e7e9ea;
+      --muted: #71767b;
+      --border: #2f3336;
+      --accent: #8b7dff;
+      --accent-hover: #9d91ff;
+      --danger: #f4212e;
+      --focus: rgba(139, 125, 255, .3);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, textarea { font: inherit; color: inherit; }
+  .hidden { display: none !important; }
+
+  .col {
+    max-width: 600px;
+    margin: 0 auto;
+    min-height: 100vh;
+    border-left: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+  }
+  @media (max-width: 600px) { .col { border: 0; } }
+
+  header {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 16px;
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+  }
+  h1 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: .02em; }
+  h1 span { margin-left: 6px; }
+  .ghost {
+    background: none; border: 0; cursor: pointer;
+    color: var(--muted); font-size: 13px; padding: 6px 10px; border-radius: 999px;
+  }
+  .ghost:hover { background: var(--surface); color: var(--text); }
+
+  /* Lock screen */
+  .lock {
+    display: flex; flex-direction: column; align-items: center; text-align: center;
+    padding: 72px 24px;
+  }
+  .lock .moon { font-size: 48px; margin-bottom: 12px; }
+  .lock h2 { margin: 0 0 6px; font-size: 26px; font-weight: 800; }
+  .lock p { margin: 0 0 24px; color: var(--muted); }
+  .lock form { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 300px; }
+  .field {
+    width: 100%; padding: 12px 14px;
+    background: var(--bg); border: 1px solid var(--border); border-radius: 8px; outline: none;
+  }
+  .field:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--focus); }
+  .btn {
+    background: var(--accent); color: #fff; border: 0; cursor: pointer;
+    font-weight: 700; padding: 10px 18px; border-radius: 999px;
+  }
+  .btn:hover:not(:disabled) { background: var(--accent-hover); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .error { color: var(--danger); font-size: 14px; min-height: 20px; }
+  .shake { animation: shake .35s; }
+  @keyframes shake { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
+
+  /* Composer */
+  .composer { display: flex; gap: 12px; padding: 16px; border-bottom: 1px solid var(--border); }
+  .composer-body { flex: 1; min-width: 0; }
+  .name-input {
+    border: 0; background: none; outline: none; padding: 2px 0;
+    font-weight: 700; width: 100%;
+  }
+  .name-input::placeholder { color: var(--muted); font-weight: 400; }
+  .text-input {
+    display: block; width: 100%; resize: none; border: 0; outline: none; background: none;
+    font-size: 19px; line-height: 1.35; padding: 6px 0 10px; min-height: 56px; overflow: hidden;
+  }
+  .text-input::placeholder { color: var(--muted); }
+  .composer-foot {
+    display: flex; justify-content: flex-end; align-items: center; gap: 12px;
+    border-top: 1px solid var(--border); padding-top: 10px;
+  }
+  .count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .count.over { color: var(--danger); font-weight: 700; }
+  .composer .error { flex: 1; min-height: 0; }
+
+  /* Feed */
+  .avatar {
+    flex: none; width: 40px; height: 40px; border-radius: 50%;
+    display: grid; place-items: center;
+    color: #fff; font-weight: 800; font-size: 17px; text-transform: uppercase;
+    user-select: none;
+  }
+  .post { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .post:hover { background: var(--surface); }
+  .post.new { animation: fadein .5s ease-out; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(-6px); } }
+  .post-body { flex: 1; min-width: 0; }
+  .post-head { display: flex; gap: 4px; align-items: baseline; white-space: nowrap; }
+  .post-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
+  .post-time { color: var(--muted); flex: none; }
+  .post-text { margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .post-text a { color: var(--accent); text-decoration: none; }
+  .post-text a:hover { text-decoration: underline; }
+  .empty, .status { padding: 48px 16px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="col">
+  <header>
+    <h1>MJNM UPDATES<span aria-hidden="true">🌙</span></h1>
+    <button id="lockBtn" class="ghost hidden" type="button">Lock</button>
+  </header>
+
+  <section id="lockScreen" class="lock hidden">
+    <div class="moon" aria-hidden="true">🚀</div>
+    <h2>Team only</h2>
+    <p>Enter the team password to see and post updates.</p>
+    <form id="lockForm">
+      <input id="pwInput" class="field" type="password" placeholder="Password" autocomplete="current-password" required>
+      <button class="btn" type="submit">Enter</button>
+      <div id="lockError" class="error" role="alert"></div>
+    </form>
+  </section>
+
+  <main id="app" class="hidden">
+    <form id="composer" class="composer">
+      <div id="meAvatar" class="avatar" aria-hidden="true">?</div>
+      <div class="composer-body">
+        <input id="nameInput" class="name-input" maxlength="30" placeholder="Your name" autocomplete="nickname" aria-label="Your name">
+        <textarea id="textInput" class="text-input" rows="1" placeholder="What's the update?" aria-label="Update"></textarea>
+        <div class="composer-foot">
+          <div id="postError" class="error" role="alert"></div>
+          <span id="count" class="count">280</span>
+          <button id="postBtn" class="btn" type="submit" disabled>Post</button>
+        </div>
+      </div>
+    </form>
+    <div id="feed"><div class="status">Loading…</div></div>
+  </main>
+</div>
+
+<script>
+(() => {
+  const MAX = 280;
+  const POLL_MS = 15000;
+  const $ = (id) => document.getElementById(id);
+
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    del(k) { try { localStorage.removeItem(k); } catch {} },
+  };
+
+  let password = store.get("mjnm-pw");
+  let seenIds = null;
+  let pollTimer = null;
+  let lastError = "";
+
+  // ---------- helpers ----------
+  const colors = ["#6d5dfc", "#1d9bf0", "#00ba7c", "#f91880", "#ff7a00", "#7856ff", "#e0245e", "#0e9f9a", "#c2410c", "#2563eb"];
+  function colorFor(name) {
+    let h = 0;
+    for (const c of name.toLowerCase()) h = (h * 31 + c.codePointAt(0)) >>> 0;
+    return colors[h % colors.length];
+  }
+  function initial(name) { return [...(name.trim() || "?")][0]; }
+
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function formatTime(ms) {
+    const d = new Date(ms);
+    const now = new Date();
+    const hm = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    if (ms >= startOfToday) return hm;
+    if (ms >= startOfToday - 86400000) return `Yesterday ${hm}`;
+    const opts = { month: "short", day: "numeric" };
+    if (d.getFullYear() !== now.getFullYear()) opts.year = "numeric";
+    return `${d.toLocaleDateString(undefined, opts)}, ${hm}`;
+  }
+
+  const urlRe = /\bhttps?:\/\/[^\s<]+[^\s<.,:;"')\]!?]/g;
+  function renderText(el, text) {
+    let last = 0;
+    for (const m of text.matchAll(urlRe)) {
+      if (m.index > last) el.append(text.slice(last, m.index));
+      const a = document.createElement("a");
+      a.href = m[0];
+      a.textContent = m[0];
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";
+      el.append(a);
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) el.append(text.slice(last));
+  }
+
+  async function api(method, body) {
+    const res = await fetch("/api/posts", {
+      method,
+      headers: { "x-team-password": password || "", ...(body ? { "content-type": "application/json" } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    let data = {};
+    try { data = await res.json(); } catch {}
+    if (!res.ok) {
+      const err = new Error(data.error || `Something went wrong (${res.status}).`);
+      err.status = res.status;
+      throw err;
+    }
+    return data;
+  }
+
+  // ---------- views ----------
+  function showLock(message = "") {
+    stopPolling();
+    $("app").classList.add("hidden");
+    $("lockBtn").classList.add("hidden");
+    $("lockScreen").classList.remove("hidden");
+    $("lockError").textContent = message;
+    $("pwInput").value = "";
+    $("pwInput").focus();
+  }
+
+  function showApp() {
+    $("lockScreen").classList.add("hidden");
+    $("app").classList.remove("hidden");
+    $("lockBtn").classList.remove("hidden");
+    updateMe();
+    startPolling();
+    if (!$("nameInput").value) $("nameInput").focus();
+  }
+
+  function renderFeed(posts) {
+    const feed = $("feed");
+    feed.replaceChildren();
+    if (!posts.length) {
+      feed.innerHTML = '<div class="empty">No updates yet. Be the first to post one.</div>';
+    }
+    for (const p of posts) {
+      const row = document.createElement("article");
+      row.className = "post";
+      if (seenIds && !seenIds.has(p.id)) row.classList.add("new");
+
+      const av = document.createElement("div");
+      av.className = "avatar";
+      av.style.background = colorFor(p.name);
+      av.textContent = initial(p.name);
+      av.setAttribute("aria-hidden", "true");
+
+      const body = document.createElement("div");
+      body.className = "post-body";
+
+      const head = document.createElement("div");
+      head.className = "post-head";
+      const name = document.createElement("span");
+      name.className = "post-name";
+      name.textContent = p.name;
+      const time = document.createElement("time");
+      time.className = "post-time";
+      time.dateTime = new Date(p.created_at).toISOString();
+      time.title = new Date(p.created_at).toLocaleString();
+      time.textContent = "· " + formatTime(p.created_at);
+      head.append(name, time);
+
+      const text = document.createElement("div");
+      text.className = "post-text";
+      renderText(text, p.text);
+
+      body.append(head, text);
+      row.append(av, body);
+      feed.append(row);
+    }
+    seenIds = new Set(posts.map((p) => p.id));
+  }
+
+  async function refresh() {
+    try {
+      const { posts } = await api("GET");
+      renderFeed(posts);
+      return true;
+    } catch (e) {
+      lastError = e.message;
+      if (e.status === 401) {
+        store.del("mjnm-pw");
+        password = null;
+        showLock("Wrong password. Try again.");
+      } else if (!seenIds) {
+        $("feed").innerHTML = "";
+        const s = document.createElement("div");
+        s.className = "status";
+        s.textContent = e.message;
+        $("feed").append(s);
+      }
+      return false;
+    }
+  }
+
+  function startPolling() {
+    stopPolling();
+    pollTimer = setInterval(() => { if (!document.hidden) refresh(); }, POLL_MS);
+  }
+  function stopPolling() { clearInterval(pollTimer); pollTimer = null; }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && pollTimer) refresh(); });
+
+  // ---------- composer ----------
+  const nameInput = $("nameInput");
+  const textInput = $("textInput");
+  nameInput.value = store.get("mjnm-name") || "";
+
+  function updateMe() {
+    const n = nameInput.value.trim();
+    $("meAvatar").textContent = initial(n);
+    $("meAvatar").style.background = n ? colorFor(n) : "var(--muted)";
+    updateComposer();
+  }
+  function updateComposer() {
+    const len = [...textInput.value].length;
+    const left = MAX - len;
+    $("count").textContent = left;
+    $("count").classList.toggle("over", left < 0);
+    $("postBtn").disabled = !textInput.value.trim() || !nameInput.value.trim() || left < 0;
+    textInput.style.height = "auto";
+    textInput.style.height = textInput.scrollHeight + "px";
+  }
+  nameInput.addEventListener("input", () => { store.set("mjnm-name", nameInput.value.trim()); updateMe(); });
+  textInput.addEventListener("input", () => { $("postError").textContent = ""; updateComposer(); });
+  textInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); $("composer").requestSubmit(); }
+  });
+
+  $("composer").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if ($("postBtn").disabled) return;
+    $("postBtn").disabled = true;
+    $("postBtn").textContent = "Posting…";
+    try {
+      await api("POST", { name: nameInput.value.trim(), text: textInput.value.trim() });
+      textInput.value = "";
+      await refresh();
+    } catch (err) {
+      if (err.status === 401) { store.del("mjnm-pw"); password = null; showLock("Please enter the password again."); }
+      else $("postError").textContent = err.message;
+    } finally {
+      $("postBtn").textContent = "Post";
+      updateComposer();
+    }
+  });
+
+  // ---------- lock ----------
+  $("lockForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    password = $("pwInput").value;
+    $("lockError").textContent = "";
+    if (await refresh()) {
+      store.set("mjnm-pw", password);
+      showApp();
+    } else if (!$("lockScreen").classList.contains("hidden")) {
+      if (!$("lockError").textContent) $("lockError").textContent = lastError || "Couldn't connect. Try again.";
+      $("lockForm").classList.remove("shake");
+      void $("lockForm").offsetWidth;
+      $("lockForm").classList.add("shake");
+      $("pwInput").select();
+    }
+  });
+
+  $("lockBtn").addEventListener("click", () => {
+    store.del("mjnm-pw");
+    password = null;
+    seenIds = null;
+    $("feed").innerHTML = '<div class="status">Loading…</div>';
+    showLock();
+  });
+
+  // ---------- start ----------
+  if (password) {
+    // Shows the app even on a network hiccup; a wrong password sends you to the lock screen.
+    refresh().then(() => { if (password) showApp(); });
+  } else {
+    showLock();
+  }
+})();
+</script>
+</body>
+</html>
