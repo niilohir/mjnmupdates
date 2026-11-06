@@ -116,6 +116,23 @@
     display: flex; justify-content: flex-end; align-items: center; gap: 12px;
     border-top: 1px solid var(--border); padding-top: 10px;
   }
+  .icon-btn {
+    flex: none; width: 36px; height: 36px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: none; border: 0; cursor: pointer; color: var(--accent);
+  }
+  .icon-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+  .icon-btn:disabled { opacity: .4; cursor: default; }
+  .photo-preview { position: relative; display: inline-block; max-width: 100%; margin-bottom: 10px; }
+  .photo-preview img {
+    display: block; max-width: 100%; max-height: 280px;
+    border-radius: 14px; border: 1px solid var(--border);
+  }
+  .photo-preview.busy img { opacity: .5; }
+  .photo-remove {
+    position: absolute; top: 6px; right: 6px; width: 30px; height: 30px; border-radius: 50%;
+    border: 0; cursor: pointer; background: rgba(0, 0, 0, .7); color: #fff; font-size: 15px; line-height: 1;
+  }
   .count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .count.over { color: var(--danger); font-weight: 700; }
   .composer .error { flex: 1; min-height: 0; }
@@ -146,6 +163,20 @@
   .post-text { margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .post-text a { color: var(--accent); text-decoration: none; }
   .post-text a:hover { text-decoration: underline; }
+  .img-btn {
+    display: block; margin-top: 8px; padding: 0; border: 0; background: none;
+    max-width: 100%; cursor: zoom-in; border-radius: 14px;
+  }
+  .post-img {
+    display: block; max-width: 100%; max-height: 510px; width: auto; height: auto;
+    border-radius: 14px; border: 1px solid var(--border); background: var(--surface);
+  }
+  .lightbox {
+    position: fixed; inset: 0; z-index: 50;
+    display: grid; place-items: center; padding: 16px;
+    background: rgba(0, 0, 0, .9); cursor: zoom-out;
+  }
+  .lightbox img { max-width: 100%; max-height: 100%; border-radius: 6px; }
   .empty, .status { padding: 48px 16px; text-align: center; color: var(--muted); }
 </style>
 </head>
@@ -173,7 +204,15 @@
       <div class="composer-body">
         <div id="who" class="who" role="radiogroup" aria-label="Posting as"><span class="who-label">Posting as</span></div>
         <textarea id="textInput" class="text-input" rows="1" placeholder="What's the update?" aria-label="Update"></textarea>
+        <div id="photoPreview" class="photo-preview hidden">
+          <img id="photoImg" alt="Photo to post">
+          <button id="photoRemove" class="photo-remove" type="button" aria-label="Remove photo">✕</button>
+        </div>
         <div class="composer-foot">
+          <button id="photoBtn" class="icon-btn" type="button" aria-label="Add photo" title="Add photo">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.8"/><path d="M21 15l-5-5L5 21"/></svg>
+          </button>
+          <input id="photoInput" type="file" accept="image/*" hidden>
           <div id="postError" class="error" role="alert"></div>
           <span id="count" class="count">280</span>
           <button id="postBtn" class="btn" type="submit" disabled>Post</button>
@@ -183,6 +222,10 @@
 
     <div id="feed"><div class="status">Loading…</div></div>
   </main>
+</div>
+
+<div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true" aria-label="Photo, click or press Escape to close" tabindex="-1">
+  <img id="lightboxImg" alt="">
 </div>
 
 <script>
@@ -202,6 +245,9 @@
   let lastPosts = [];
   let confirmingId = null; // post waiting for a second "Delete?" click
   let confirmTimer = null;
+  let renderedDay = null;
+  let photo = null;      // { blob, width, height, url } ready to upload
+  let photoBusy = false; // true while a picked photo is being shrunk
 
   // ---------- helpers ----------
   // The team list (names + colors) comes from the server, see lib/team.js.
@@ -249,8 +295,9 @@
   async function api(method, path, { body, pw } = {}) {
     const headers = {};
     if (pw) headers["x-team-password"] = pw;
-    if (body) headers["content-type"] = "application/json";
-    const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+    const isForm = body instanceof FormData; // the browser sets the form's content type
+    if (body && !isForm) headers["content-type"] = "application/json";
+    const res = await fetch(path, { method, headers, body: isForm ? body : body ? JSON.stringify(body) : undefined });
     let data = {};
     try { data = await res.json(); } catch {}
     if (!res.ok) {
@@ -362,11 +409,32 @@
         head.append(del);
       }
 
-      const text = document.createElement("div");
-      text.className = "post-text";
-      renderText(text, p.text);
+      body.append(head);
+      if (p.text) {
+        const text = document.createElement("div");
+        text.className = "post-text";
+        renderText(text, p.text);
+        body.append(text);
+      }
 
-      body.append(head, text);
+      if (p.image) {
+        const open = document.createElement("button");
+        open.type = "button";
+        open.className = "img-btn";
+        open.setAttribute("aria-label", `Open photo from ${p.name} full size`);
+        const img = document.createElement("img");
+        img.className = "post-img";
+        img.src = p.image.url;
+        img.width = p.image.width;
+        img.height = p.image.height;
+        img.loading = "lazy";
+        img.decoding = "async";
+        img.alt = "";
+        open.append(img);
+        open.addEventListener("click", () => openLightbox(p.image.url));
+        body.append(open);
+      }
+
       row.append(av, body);
       feed.append(row);
     }
@@ -413,7 +481,13 @@
         if (me && !team.some((m) => m.name === me)) me = null;
         renderWho();
       }
-      renderFeed(data.posts);
+      // Only redraw when something changed (or the date rolled over, for
+      // "Yesterday" labels), so photos don't flicker on every poll.
+      const today = new Date().toDateString();
+      if (!seenIds || today !== renderedDay || JSON.stringify(data.posts) !== JSON.stringify(lastPosts)) {
+        renderedDay = today;
+        renderFeed(data.posts);
+      }
     } catch (e) {
       if (!seenIds) {
         const s = document.createElement("div");
@@ -465,7 +539,8 @@
     const left = MAX - len;
     $("count").textContent = left;
     $("count").classList.toggle("over", left < 0);
-    $("postBtn").disabled = !textInput.value.trim() || !me || left < 0;
+    $("postBtn").disabled = !me || left < 0 || photoBusy || (!textInput.value.trim() && !photo);
+    $("photoBtn").disabled = photoBusy;
     textInput.style.height = "auto";
     textInput.style.height = textInput.scrollHeight + "px";
   }
@@ -474,14 +549,113 @@
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); $("composer").requestSubmit(); }
   });
 
+  // ---------- photos ----------
+  const MAX_SIDE = 1600;
+  const MAX_BYTES = 1_200_000;
+
+  // Shrinks a photo in the browser before upload: max 1600px on the long side,
+  // saved as JPEG. Redrawing it also drops hidden metadata such as GPS location.
+  async function shrinkPhoto(file) {
+    const src = URL.createObjectURL(file);
+    try {
+      const img = new Image();
+      img.src = src;
+      try { await img.decode(); }
+      catch { throw new Error("Couldn't read that photo. Try a JPG or PNG."); }
+      const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+      const width = Math.max(1, Math.round(img.naturalWidth * scale));
+      const height = Math.max(1, Math.round(img.naturalHeight * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#fff"; // transparent PNGs get a white background
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(img, 0, 0, width, height);
+      for (const quality of [0.82, 0.7, 0.55]) {
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
+        if (blob && blob.size <= MAX_BYTES) return { blob, width, height };
+      }
+      throw new Error("That photo is too big, even after shrinking.");
+    } finally {
+      URL.revokeObjectURL(src);
+    }
+  }
+
+  async function attachPhoto(file) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { $("postError").textContent = "That isn't a photo."; return; }
+    $("postError").textContent = "";
+    clearPhoto();
+    photoBusy = true;
+    updateComposer();
+    try {
+      const shrunk = await shrinkPhoto(file);
+      photo = { ...shrunk, url: URL.createObjectURL(shrunk.blob) };
+      $("photoImg").src = photo.url;
+      $("photoPreview").classList.remove("hidden");
+      textInput.focus();
+    } catch (err) {
+      $("postError").textContent = err.message;
+    } finally {
+      photoBusy = false;
+      updateComposer();
+    }
+  }
+
+  function clearPhoto() {
+    if (photo) URL.revokeObjectURL(photo.url);
+    photo = null;
+    $("photoInput").value = "";
+    $("photoImg").removeAttribute("src");
+    $("photoPreview").classList.add("hidden");
+    updateComposer();
+  }
+
+  $("photoBtn").addEventListener("click", () => $("photoInput").click());
+  $("photoInput").addEventListener("change", () => attachPhoto($("photoInput").files[0]));
+  $("photoRemove").addEventListener("click", () => { clearPhoto(); textInput.focus(); });
+  // Pasting a screenshot into the text box attaches it too.
+  textInput.addEventListener("paste", (e) => {
+    const item = [...(e.clipboardData?.items || [])].find((i) => i.kind === "file" && i.type.startsWith("image/"));
+    if (item) { e.preventDefault(); attachPhoto(item.getAsFile()); }
+  });
+
+  // ---------- full-size photo view ----------
+  let lightboxReturnFocus = null;
+  function openLightbox(url) {
+    lightboxReturnFocus = document.activeElement;
+    $("lightboxImg").src = url;
+    $("lightbox").classList.remove("hidden");
+    $("lightbox").focus();
+  }
+  function closeLightbox() {
+    $("lightbox").classList.add("hidden");
+    $("lightboxImg").removeAttribute("src");
+    lightboxReturnFocus?.focus();
+  }
+  $("lightbox").addEventListener("click", closeLightbox);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("lightbox").classList.contains("hidden")) closeLightbox();
+  });
+
   $("composer").addEventListener("submit", async (e) => {
     e.preventDefault();
     if ($("postBtn").disabled) return;
     $("postBtn").disabled = true;
     $("postBtn").textContent = "Posting…";
     try {
-      await api("POST", "/api/posts", { pw: password, body: { name: me, text: textInput.value.trim() } });
+      const form = new FormData();
+      form.set("name", me);
+      form.set("text", textInput.value.trim());
+      if (photo) {
+        form.set("image", photo.blob, "photo.jpg");
+        form.set("width", photo.width);
+        form.set("height", photo.height);
+      }
+      await api("POST", "/api/posts", { pw: password, body: form });
       textInput.value = "";
+      clearPhoto();
       await refresh();
     } catch (err) {
       if (err.status === 401) { logout(); openLogin("The team password has changed. Log in again."); }
