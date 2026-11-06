@@ -1,6 +1,6 @@
 # MJNM UPDATES 🌙
 
-A tiny password-protected update feed for the team. Pick a name, post a short update (max 280 characters), and it shows up for everyone with a timestamp. No likes, no comments.
+A tiny update feed for the team. Anyone with the link can read it. Team members click **Team login**, enter the team password, pick who they are (Anders, Arttu, Emppu, Niilo or Ingman, each with their own color) and post short updates (max 280 characters), which show up for everyone with a timestamp. No likes, no comments. Anyone logged in can delete any post (click **Delete**, then **Delete?** to confirm).
 
 Hosted for free on **Cloudflare Pages**, posts stored in **Cloudflare D1**.
 
@@ -8,8 +8,11 @@ Hosted for free on **Cloudflare Pages**, posts stored in **Cloudflare D1**.
 
 | Path | What it is |
 | --- | --- |
-| `public/index.html` | The whole website: lock screen, post box, feed |
-| `functions/api/posts.js` | The API: checks the password, reads and saves posts |
+| `public/index.html` | The whole website: feed, team login, post box |
+| `functions/api/posts.js` | `GET` lists posts (public); `POST` saves one and `DELETE ?id=` removes one (password required) |
+| `functions/api/login.js` | Checks the team password when someone logs in |
+| `lib/api.js` | Shared helpers: password check, database setup |
+| `lib/team.js` | The list of names and their colors |
 | `package.json` | Only used to run the site locally (`npm run dev`) |
 | `.dev.vars` | Local-only password (not committed to Git) |
 
@@ -51,6 +54,7 @@ After this, every push to `main` updates the site automatically. The posts table
 
 ## Changing things later
 
+- **Add, rename or recolor someone:** edit `lib/team.js` and push. Only names on that list can post. Old posts under a removed name stay, with an automatic color.
 - **Change the password:** edit `TEAM_PASSWORD` in Cloudflare, then redeploy. Everyone has to enter the new one.
 - **Add a custom domain:** project → *Custom domains* → *Set up a domain*.
-- **Delete a post:** D1 → `mjnm-updates` → *Console*, then run `DELETE FROM posts WHERE id = 123;`
+- **Delete a post:** log in on the site and use the post's **Delete** button. Deleted posts disappear from the site immediately, but Cloudflare D1 keeps automatic backups ("Time Travel") for 30 days, so the text still exists in those backups for up to 30 days.
